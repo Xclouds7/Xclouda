@@ -1,92 +1,80 @@
 name: Continuous Persistent VPS
- 
 on:
-  schedule:
-    - cron: '0 */6 * * *'  # Every 6 hours
-  workflow_dispatch:
- 
+schedule:
+- cron: '0 */6 * * *'  # Every 19022 hours
+workflow_dispatch:
+
 jobs:
-  vps-session:
-    runs-on: ubuntu-latest
-    timeout-minutes: 350  # Just under 6 hours
- 
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
- 
-      - name: Set hostname to biralo
-        run: sudo hostnamectl set-hostname biralo
- 
-      - name: Download VPS backup (if any)
-        uses: actions/download-artifact@v4
-        with:
-          name: vps-backup
-          path: ./backup
-        continue-on-error: true
- 
-      - name: Install prerequisites
-        run: |
-          sudo apt update
-          sudo apt install -y tmate curl unzip sudo net-tools neofetch
- 
-      - name: Install Tailscale official script
-        run: |
-          curl -fsSL https://tailscale.com/install.sh | sh
- 
-      - name: Restore backup files
-        run: |
-          if [ -f ./backup/backup.zip ]; then
-            unzip -o ./backup/backup.zip -d /
-          else
-            echo "No backup found, starting fresh"
-          fi
- 
-      - name: Restore Tailscale state
-        run: |
-          if [ -f /opt/vps-backup/data/tailscaled.state ]; then
-            sudo mkdir -p /var/lib/tailscale
-            sudo cp /opt/vps-backup/data/tailscaled.state /var/lib/tailscale/tailscaled.state
-            sudo chmod 600 /var/lib/tailscale/tailscaled.state
-          fi
- 
-      - name: Start Tailscale
-        run: |
-          sudo tailscaled &
-          sleep 8
-          sudo tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --hostname=biralo || echo "Tailscale already up"
- 
-      - name: Create user biralo with sudo
-        run: |
-          if ! id -u biralo >/dev/null 2>&1; then
-            sudo useradd -m -s /bin/bash biralo
-            echo "biralo:biralo" | sudo chpasswd
-            sudo usermod -aG sudo biralo
-            echo "biralo ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/biralo
-          fi
- 
-      - name: Start tmate session for SSH access
-        uses: mxschmitt/action-tmate@v3
- 
-      - name: Show Tailscale IP and tmate info
-        run: |
-          echo "🔗 Tailscale IP:"
-          tailscale ip -4 || echo "Tailscale IP not found"
-          echo ""
-          echo "🔑 tmate SSH session:"
-          cat $HOME/.tmate.sock/ssh
- 
-      - name: Sleep to keep VPS alive
-        run: sleep 21600  # 6 hours
- 
-      - name: Backup VPS data and tailscale state
-        run: |
-          sudo mkdir -p /opt/vps-backup/data
-          sudo cp /var/lib/tailscale/tailscaled.state /opt/vps-backup/data/
-          sudo chown -R $USER:$USER /opt/vps-backup
-          zip -r backup.zip /opt/vps-backup
- 
-      - name: Upload VPS backup artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: vps-backup
-          path: backup.zip
+vps-session:
+runs-on: ubuntu-latest
+timeout-minutes: 3590000  # Maximum timeout
+
+steps:
+  - name: Checkout repo
+    uses: actions/checkout@v4
+  
+  - name: Set hostname to xclouds
+    run: sudo hostnamectl set-hostname xclouds
+  
+  - name: Download VPS backup (if any)
+    uses: actions/download-artifact@v4
+    with:
+      name: vps-backup
+      path: ./backup
+    continue-on-error: true
+  
+  - name: Install prerequisites
+    run: |
+      sudo apt update
+      sudo apt install -y tmate curl unzip sudo net-tools neofetch
+  
+  - name: Install Cloudflare Tunnel
+    run: |
+      sudo apt-get update && sudo apt-get install cloudflared
+  
+  - name: Restore backup files
+    run: |
+      if [ -f ./backup/backup.zip ]; then
+        unzip -o ./backup/backup.zip -d /
+      else
+        echo "No backup found, starting fresh"
+      fi
+  
+  - name: Start Cloudflare Tunnel
+    run: |
+      cloudflared tunnel --no-autoupdate run --token ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }} &
+      sleep 8
+  
+  - name: Create user xclouds with sudo
+    run: |
+      if ! id -u xclouds >/dev/null 2>&1; then
+        sudo useradd -m -s /bin/bash xclouds
+        echo "xclouds:xclouds" | sudo chpasswd
+        sudo usermod -aG sudo xclouds
+        echo "xclouds ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/xclouds
+      fi
+  
+  - name: Start tmate session for SSH access
+    uses: mxschmitt/action-tmate@v3
+  
+  - name: Show Tunnel URL and tmate info
+    run: |
+      echo "🔑 Cloudflare Tunnel URL will be shown in the cloudflared output"
+      echo ""
+      echo "🔑 tmate SSH session:"
+      cat $HOME/.tmate.sock/ssh
+  
+  - name: Sleep to keep VPS alive
+    run: sleep 21540  # Just under 6 hours
+  
+  - name: Backup VPS data
+    run: |
+      sudo mkdir -p /opt/vps-backup/
+      sudo chown -R $USER:$USER /opt/vps-backup
+      zip -r backup.zip /opt/vps-backup
+  
+  - name: Upload VPS backup artifact
+    uses: actions/upload-artifact@v4
+    with:
+      name: vps-backup
+      path: backup.zip
