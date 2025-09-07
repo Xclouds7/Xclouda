@@ -1,80 +1,36 @@
-name: Continuous Persistent VPS
+# This workflow demonstrates how to run a job on a self-hosted runner
+# that gives you a persistent VPS-like experience.
+
+name: Run on Self-Hosted Runner
+
 on:
-schedule:
-- cron: '0 */6 * * *'  # Every 6 hours
-workflow_dispatch:
+  # This allows you to run this workflow manually from the Actions tab.
+  workflow_dispatch:
+  # This makes the workflow run on a schedule, once every day at 00:00 UTC.
+  # Adjust the cron expression as needed for your desired frequency.
+  schedule:
+    - cron: '0 0 * * *'
 
 jobs:
-vps-session:
-runs-on: ubuntu-latest
-timeout-minutes: 359  # Maximum timeout
+  vps-session:
+    # IMPORTANT: The 'self-hosted' label is the default. If you used a different label
+    # when setting up your runner (e.g., 'my-persistent-runner'),
+    # change this line to match that label.
+    runs-on: self-hosted
 
-steps:
-  - name: Checkout repo
-    uses: actions/checkout@v4
-  
-  - name: Set hostname to xclouds
-    run: sudo hostnamectl set-hostname xclouds
-  
-  - name: Download VPS backup (if any)
-    uses: actions/download-artifact@v4
-    with:
-      name: vps-backup
-      path: ./backup
-    continue-on-error: true
-  
-  - name: Install prerequisites
-    run: |
-      sudo apt update
-      sudo apt install -y tmate curl unzip sudo net-tools neofetch
-  
-  - name: Install Cloudflare Tunnel
-    run: |
-      sudo apt-get update && sudo apt-get install cloudflared
-  
-  - name: Restore backup files
-    run: |
-      if [ -f ./backup/backup.zip ]; then
-        unzip -o ./backup/backup.zip -d /
-      else
-        echo "No backup found, starting fresh"
-      fi
-  
-  - name: Start Cloudflare Tunnel
-    run: |
-      cloudflared tunnel --no-autoupdate run --token ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }} &
-      sleep 8
-  
-  - name: Create user xclouds with sudo
-    run: |
-      if ! id -u xclouds >/dev/null 2>&1; then
-        sudo useradd -m -s /bin/bash xclouds
-        echo "xclouds:xclouds" | sudo chpasswd
-        sudo usermod -aG sudo xclouds
-        echo "xclouds ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/xclouds
-      fi
-  
-  - name: Start tmate session for SSH access
-    uses: mxschmitt/action-tmate@v3
-  
-  - name: Show Tunnel URL and tmate info
-    run: |
-      echo "🔑 Cloudflare Tunnel URL will be shown in the cloudflared output"
-      echo ""
-      echo "🔑 tmate SSH session:"
-      cat $HOME/.tmate.sock/ssh
-  
-  - name: Sleep to keep VPS alive
-    run: sleep 21540  # Just under 6 hours
-  
-  - name: Backup VPS data
-    run: |
-      sudo mkdir -p /opt/vps-backup/
-      sudo chown -R $USER:$USER /opt/vps-backup
-      zip -r backup.zip /opt/vps-backup
-  
-  - name: Upload VPS backup artifact
-    uses: actions/upload-artifact@v4
-    with:
-      name: vps-backup
-      path: backup.zip
+    steps:
+      - name: Display a welcome message
+        run: |
+          echo "Hello from your persistent VPS!"
+          echo "This job is running on the machine you set up."
+      
+      - name: Display persistent Tailscale IP
+        run: |
+          echo "🔗 Your persistent Tailscale IP:"
+          tailscale ip -4
+          
+      - name: Show the current directory content
+        run: ls -la
+
+      - name: Display the hostname to confirm persistence
+        run: hostname
