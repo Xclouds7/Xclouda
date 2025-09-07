@@ -1,29 +1,89 @@
-name: Configure VPS with Tailscale
+name: Continuous Persistent VPS
 
 on:
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
   workflow_dispatch:
 
 jobs:
-  setup-vps:
+  vps-session:
     runs-on: ubuntu-latest
+    timeout-minutes: 360  # Maximum allowed for github-hosted runners
+
     steps:
-      - name: Connect and configure VPS via SSH
-        uses: appleboy/ssh-action@v0.1.10
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set hostname to xclouds
+        run: sudo hostnamectl set-hostname xclouds
+
+      - name: Download VPS backup (if any)
+        uses: actions/download-artifact@v4
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            set -e
-            # Install Tailscale if not present
-            if ! command -v tailscale >/dev/null 2>&1; then
-              curl -fsSL https://tailscale.com/install.sh | sh
-            fi
-            # Authenticate and bring up Tailscale
-            sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }}
-            # Enable tailscaled to start on boot
-            sudo systemctl enable tailscaled
-            sudo systemctl restart tailscaled
-            # Show Tailscale status and IP
-            tailscale status
-            tailscale ip -4
+          name: vps-backup
+          path: ./backup
+        continue-on-error: true
+
+      - name: Install prerequisites
+        run: |
+          sudo apt update
+          sudo apt install -y tmate curl unzip sudo net-tools neofetch
+
+      - name: Install Tailscale official script
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+
+      - name: Restore backup files
+        run: |
+          if [ -f ./backup/backup.zip ]; then
+            unzip -o ./backup/backup.zip -d /
+          else
+            echo "No backup found, starting fresh"
+          fi
+
+      - name: Restore Tailscale state
+        run: |
+          if [ -f /opt/vps-backup/data/tailscaled.state ]; then
+            sudo mkdir -p /var/lib/tailscale
+            sudo cp /opt/vps-backup/data/tailscaled.state /var/lib/tailscale/tailscaled.state
+            sudo chmod 600 /var/lib/tailscale/tailscaled.state
+          fi
+
+      - name: Start Tailscale
+        run: |
+          sudo tailscaled &
+          sleep 8
+          sudo tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --hostname=xclouds || echo "Tailscale already up"
+
+      - name: Create user xclouds with sudo
+        run: |
+          if ! id -u xclouds >/dev/null 2>&1; then
+            sudo useradd -m -s /bin/bash xclouds
+            echo "xclouds:xclouds" | sudo chpasswd
+            sudo usermod -aG sudo xclouds
+            echo "xclouds ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/xclouds
+          fi
+
+      - name: Start tmate session for SSH access
+        uses: mxschmitt/action-tmate@v3
+
+      - name: Show Tailscale IP and tmate info
+        run: |
+          echo "🔗 Tailscale IP:"
+          tailscale ip -4 || echo "Tailscale IP not found"
+          echo ""
+          echo "🔑 tmate SSH session:"
+          cat $HOME/.tmate.sock/ssh
+
+      - name: Backup VPS data and tailscale state
+        run: |
+          sudo mkdir -p /opt/vps-backup/data
+          sudo cp /var/lib/tailscale/tailscaled.state /opt/vps-backup/data/
+          sudo chown -R $USER:$USER /opt/vps-backup
+          zip -r backup.zip /opt/vps-backup
+
+      - name: Upload VPS backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vps-backup
+          path: backup.zip
