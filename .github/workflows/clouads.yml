@@ -1,0 +1,36 @@
+# This workflow demonstrates how to run a job on a self-hosted runner
+# that gives you a persistent VPS-like experience.
+
+name: Run on Self-Hosted Runner
+
+on:
+  # This allows you to run this workflow manually from the Actions tab.
+  workflow_dispatch:
+  # This makes the workflow run on a schedule, once every day at 00:00 UTC.
+  # Adjust the cron expression as needed for your desired frequency.
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  vps-session:
+    # IMPORTANT: The 'self-hosted' label is the default. If you used a different label
+    # when setting up your runner (e.g., 'my-persistent-runner'),
+    # change this line to match that label.
+    runs-on: self-hosted
+
+    steps:
+      - name: Display a welcome message
+        run: |
+          echo "Hello from your persistent VPS!"
+          echo "This job is running on the machine you set up."
+      
+      - name: Display persistent Tailscale IP
+        run: |
+          echo "🔗 Your persistent Tailscale IP:"
+          tailscale ip -4
+          
+      - name: Show the current directory content
+        run: ls -la
+
+      - name: Display the hostname to confirm persistence
+        run: hostname
