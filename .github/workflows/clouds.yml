@@ -1,24 +1,33 @@
 name: Persistent VPS
 
 on:
-  workflow_dispatch:  # Manual trigger only, NO automatic runs!
+  workflow_dispatch:  # Manual trigger only
 
 jobs:
   vps-session:
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # Max allowed for GitHub-hosted runners
+    timeout-minutes: 360
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Set hostname to xclouds
-        run: sudo hostnamectl set-hostname xclouds
+      - name: Show public IP address
+        run: curl ifconfig.me
 
       - name: Install prerequisites
         run: |
           sudo apt update
           sudo apt install -y tmate curl unzip sudo net-tools neofetch
+
+      - name: Install Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+
+      - name: Authenticate Tailscale (replace with your auth key)
+        run: |
+          sudo tailscale up --authkey tskey-auth-kuZvZNDyvi11CNTRL-7oMZyWdSpmHHaDpNRQkxmHZsMtUB9NFd
+        # Replace YOUR_TAILSCALE_AUTHKEY with your actual Tailscale auth key
 
       - name: neofetch for system info
         run: neofetch
